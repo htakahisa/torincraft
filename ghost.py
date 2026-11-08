@@ -33,9 +33,11 @@ def next_waypoint(sx, sy, tx, ty, solid, n):
 
 class Ghost:
     speed = 1.0
+    CLIMB = 1.5   # 上昇・下降速度（高さ/秒）
 
     def __init__(self, x, y):
         self.x, self.y = x, y
+        self.z = 0.0   # 現在の高さ
         self.kx = self.ky = 0.0   # ノックバック速度
         self.flash = 0.0          # 赤点滅の残り時間
         self.hp = 2               # 体力（ハート2つ）
@@ -59,14 +61,18 @@ class Ghost:
         f = max(0.0, 1 - 8 * dt)   # 減衰
         self.kx *= f
         self.ky *= f
-        if math.hypot(px - self.x, py - self.y) <= 0.8:
+        gh = lambda x, y: 1.0 if (int(x), int(y)) in solid else 0.0
+        near = math.hypot(px - self.x, py - self.y) <= 0.8
+        w = None if near else next_waypoint(self.x, self.y, px, py, (), n)   # ブロックを障害物にしない
+        want = gh(*w) if w else gh(self.x, self.y)   # 次のマスの高さへ
+        self.z += max(-self.CLIMB * dt, min(self.CLIMB * dt, want - self.z))   # 高さの更新はここだけ
+        if near:
             if self.cool <= 0:
                 self.cool = 1.0
                 return True   # 攻撃した
             return
-        w = next_waypoint(self.x, self.y, px, py, solid, n)
-        if w is None:
-            return
+        if w is None or self.z < want - 0.01:
+            return   # 登り終わるまでその場で待つ
         dx, dy = w[0] - self.x, w[1] - self.y
         dd = math.hypot(dx, dy)
         if dd > 0:
@@ -77,8 +83,8 @@ class Ghost:
     def draw(self, s, t, box, P):
         import pygame
         x, y = self.x, self.y
-        z = 0.3 + 0.1 * math.sin(t * 3)
-        sx, sy = P(x, y, 0)
+        z = self.z + 0.3 + 0.1 * math.sin(t * 3)
+        sx, sy = P(x, y, self.z)
         pygame.draw.ellipse(s, (60, 100, 50), (sx - 16, sy - 6, 32, 12))
         W, K = (245, 245, 250), (30, 30, 40)
         if self.flash > 0:
